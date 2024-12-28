@@ -6,20 +6,48 @@ import 'dart:async';
 import '../providers/theme_provider.dart';
 import '../screens/dashboard.dart';
 
+// Color Palette Class
+class AppColorPalette {
+  // Light Theme Colors
+  static const lightPrimary = Color(0xFF2196F3);
+  static const lightSecondary = Color(0xFF4CAF50);
+  static const lightBackground = Color(0xFFF5F5F5);
+  static const lightAccent = Color(0xFF03A9F4);
+
+  // Dark Theme Colors
+  static const darkPrimary = Color(0xFF1976D2);
+  static const darkSecondary = Color(0xFF388E3C);
+  static const darkBackground = Color(0xFF121212);
+  static const darkAccent = Color(0xFF00BCD4);
+
+  // Gradient Colors
+  static const lightGradient = [
+    Color(0xFFE3F2FD),
+    Color(0xFFBBDEFB),
+  ];
+
+  static const darkGradient = [
+    Color(0xFF1A237E),
+    Color(0xFF283593),
+  ];
+}
+
 class WiFiConfigPage extends StatefulWidget {
   final BluetoothDevice device;
   final String deviceName;
 
-  WiFiConfigPage({
+  const WiFiConfigPage({
+    Key? key,
     required this.device,
     required this.deviceName,
-  });
+  }) : super(key: key);
 
   @override
   _WiFiConfigPageState createState() => _WiFiConfigPageState();
 }
 
-class _WiFiConfigPageState extends State<WiFiConfigPage> {
+class _WiFiConfigPageState extends State<WiFiConfigPage>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _ssidController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -31,12 +59,32 @@ class _WiFiConfigPageState extends State<WiFiConfigPage> {
   String _connectionStatus = 'Disconnected';
   late String _macAddress;
   StreamSubscription? _statusSubscription;
+  late AnimationController _animationController;
+  late Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
-    _deviceNameController.text = widget.deviceName;
+    // _deviceNameController.text = widget.deviceName;
     _macAddress = widget.device.id.toString();
+
+    // Setup animation
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    );
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _statusSubscription?.cancel();
+    _animationController.dispose();
+    super.dispose();
   }
 
   Future<void> _configureDevice() async {
@@ -207,11 +255,60 @@ class _WiFiConfigPageState extends State<WiFiConfigPage> {
     );
   }
 
-  @override
-  void dispose() {
-    // Cancel any ongoing subscriptions
-    _statusSubscription?.cancel();
-    super.dispose();
+  // Enhanced Validation Methods
+  String? _validateDeviceName(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Device Name is required';
+    }
+    if (value.length < 3) {
+      return 'Device Name must be at least 3 characters';
+    }
+    if (!RegExp(r'^[a-zA-Z0-9_\-\s]+$').hasMatch(value)) {
+      return 'Device Name can only contain letters, numbers, spaces, underscores, and hyphens';
+    }
+    return null;
+  }
+
+  String? _validateSSID(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'WiFi Network Name is required';
+    }
+    if (value.length < 2) {
+      return 'SSID must be at least 2 characters';
+    }
+    return null;
+  }
+
+  String? _validateWiFiPassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'WiFi Password is required';
+    }
+    if (value.length < 8) {
+      return 'Password must be at least 8 characters';
+    }
+    return null;
+  }
+
+  String? _validateMQTTBroker(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'MQTT Broker IP is required';
+    }
+    final ipRegex = RegExp(r'^(\d{1,3}\.){3}\d{1,3}$');
+    if (!ipRegex.hasMatch(value)) {
+      return 'Please enter a valid IP address (e.g., 192.168.1.100)';
+    }
+    return null;
+  }
+
+  String? _validateNumDevices(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Number of Devices is required';
+    }
+    final number = int.tryParse(value);
+    if (number == null || number < 1 || number > 10) {
+      return 'Please select a valid number of devices (1-10)';
+    }
+    return null;
   }
 
   @override
@@ -219,16 +316,26 @@ class _WiFiConfigPageState extends State<WiFiConfigPage> {
     final isDark = context.watch<ThemeProvider>().isDarkMode;
 
     return Scaffold(
+      backgroundColor: isDark ? Color(0xFF121212) : Colors.white,
       appBar: AppBar(
         title: Text(
-          'WiFi Configuration',
+          'Device Configuration',
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 24,
+            letterSpacing: 0.5,
             color: Colors.white,
           ),
         ),
         backgroundColor: isDark ? Color(0xFF1A1A1A) : Color(0xFF0D7377),
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back,
+            color: Colors.white,
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -240,113 +347,43 @@ class _WiFiConfigPageState extends State<WiFiConfigPage> {
                 : [Color(0xFFF8FDFF), Color(0xFFF0F8FA)],
           ),
         ),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(20),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // MAC Address and Wi-Fi Status
-                _buildInfoCard('Device MAC Address', _macAddress, isDark),
-                SizedBox(height: 10),
-                _buildInfoCard('Wi-Fi Status', _connectionStatus, isDark),
-                SizedBox(height: 20),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Status Cards
+                  _buildStatusCards(isDark),
+                  SizedBox(height: 20),
 
-                // Device Settings
-                _buildSectionHeader('Device Settings', isDark),
-                _buildTextField(
-                  controller: _deviceNameController,
-                  label: 'Device Name',
-                  icon: Icons.devices_rounded,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter the device name';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 20),
-                _buildNumberOfDevicesField(),
+                  // Device Settings Section
+                  _buildSectionTitle('Device Settings', isDark),
+                  SizedBox(height: 10),
+                  _buildDeviceSettingsFields(isDark),
 
-                SizedBox(height: 30),
+                  SizedBox(height: 20),
 
-                // Wi-Fi Settings
-                _buildSectionHeader('WiFi Settings', isDark),
-                _buildTextField(
-                  controller: _ssidController,
-                  label: 'WiFi Network Name (SSID)',
-                  icon: Icons.wifi_rounded,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter WiFi SSID';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 20),
-                _buildTextField(
-                  controller: _passwordController,
-                  label: 'WiFi Password',
-                  icon: Icons.lock_rounded,
-                  isPassword: true,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter WiFi password';
-                    }
-                    return null;
-                  },
-                ),
+                  // WiFi Settings Section
+                  _buildSectionTitle('WiFi Settings', isDark),
+                  SizedBox(height: 10),
+                  _buildWiFiSettingsFields(isDark),
 
-                SizedBox(height: 30),
+                  SizedBox(height: 20),
 
-                // MQTT Settings
-                _buildSectionHeader('MQTT Settings', isDark),
-                _buildTextField(
-                  controller: _mqttBrokerController,
-                  label: 'MQTT Broker IP',
-                  icon: Icons.cloud_rounded,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter MQTT broker IP';
-                    }
-                    final ipRegex = RegExp(r'^(\d{1,3}\.){3}\d{1,3}$');
-                    if (!ipRegex.hasMatch(value)) {
-                      return 'Please enter a valid IP address';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 30),
+                  // MQTT Settings Section
+                  _buildSectionTitle('MQTT Settings', isDark),
+                  SizedBox(height: 10),
+                  _buildMQTTSettingsFields(isDark),
 
-                // Configure Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _configureDevice,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDark
-                          ? Colors.white.withOpacity(0.1)
-                          : Color(0xFF0D7377),
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              isDark ? Colors.white70 : Colors.white,
-                            ),
-                          )
-                        : Text(
-                            'Configure Device',
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.w600),
-                          ),
-                  ),
-                ),
-              ],
+                  SizedBox(height: 30),
+
+                  // Configure Button
+                  _buildConfigureButton(isDark),
+                ],
+              ),
             ),
           ),
         ),
@@ -354,97 +391,301 @@ class _WiFiConfigPageState extends State<WiFiConfigPage> {
     );
   }
 
+  Widget _buildStatusCards(bool isDark) {
+    return Container(
+      margin: EdgeInsets.all(8),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0D7377), Color(0xFF14BDAC)],
+        ),
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0xFF0D7377).withOpacity(0.2),
+            blurRadius: 20,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          _buildInfoCard('Device MAC Address', _macAddress,
+              Icons.device_hub_rounded, isDark),
+          SizedBox(height: 10),
+          _buildInfoCard(
+              'Connection Status',
+              _connectionStatus,
+              _connectionStatus == 'Disconnected'
+                  ? Icons.error_outline
+                  : Icons.check_circle_outline,
+              isDark),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title, bool isDark) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        color: isDark ? Colors.white : Colors.black87,
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(
+      String title, String value, IconData icon, bool isDark) {
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white70,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConfigureButton(bool isDark) {
+    return Container(
+      margin: EdgeInsets.all(20),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF0D7377), Color(0xFF14BDAC)],
+        ),
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0xFF0D7377).withOpacity(0.2),
+            blurRadius: 20,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _configureDevice,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          padding: EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(25),
+          ),
+        ),
+        child: _isLoading
+            ? CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              )
+            : Text(
+                'Configure Device',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+      ),
+    );
+  }
+
+  // Update other methods to match this styling approach
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
     required IconData icon,
     bool isPassword = false,
+    required bool isDark,
     String? Function(String?)? validator,
   }) {
-    final isDark = context.watch<ThemeProvider>().isDarkMode;
-
     return TextFormField(
       controller: controller,
       obscureText: isPassword,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon:
-            Icon(icon, color: isDark ? Colors.white70 : Color(0xFF0D7377)),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        prefixIcon: Icon(
+          icon,
+          color: isDark ? Colors.white70 : Colors.black54,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white24 : Colors.grey.shade300,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white24 : Colors.grey.shade300,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white : Color(0xFF0D7377),
+            width: 2,
+          ),
+        ),
         filled: true,
         fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.white,
       ),
-      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+      style: TextStyle(
+        color: isDark ? Colors.white : Colors.black87,
+      ),
       validator: validator,
     );
   }
 
-  Widget _buildNumberOfDevicesField() {
-    final isDark = context.watch<ThemeProvider>().isDarkMode;
+  Widget _buildDeviceSettingsFields(bool isDark) {
+    return Column(
+      children: [
+        _buildTextField(
+          controller: _deviceNameController,
+          label: 'Device Name *',
+          icon: Icons.devices_rounded,
+          isDark: isDark,
+          validator: _validateDeviceName,
+        ),
+        SizedBox(height: 15),
+        _buildNumberOfDevicesField(isDark),
+      ],
+    );
+  }
 
-    return TextFormField(
-      controller: _numDevicesController,
-      keyboardType: TextInputType.number,
+  Widget _buildWiFiSettingsFields(bool isDark) {
+    return Column(
+      children: [
+        _buildTextField(
+          controller: _ssidController,
+          label: 'WiFi Network Name (SSID) *',
+          icon: Icons.wifi_rounded,
+          isDark: isDark,
+          validator: _validateSSID,
+        ),
+        SizedBox(height: 15),
+        _buildTextField(
+          controller: _passwordController,
+          label: 'WiFi Password *',
+          icon: Icons.lock_rounded,
+          isPassword: true,
+          isDark: isDark,
+          validator: _validateWiFiPassword,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMQTTSettingsFields(bool isDark) {
+    return _buildTextField(
+      controller: _mqttBrokerController,
+      label: 'MQTT Broker IP *',
+      icon: Icons.cloud_rounded,
+      isDark: isDark,
+      validator: _validateMQTTBroker,
+    );
+  }
+
+  Widget _buildNumberOfDevicesField(bool isDark) {
+    return DropdownButtonFormField<int>(
+      value: int.tryParse(_numDevicesController.text) ?? 1,
       decoration: InputDecoration(
         labelText: 'Number of Devices',
-        prefixIcon: Icon(Icons.devices_other_rounded,
-            color: isDark ? Colors.white70 : Color(0xFF0D7377)),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        prefixIcon: Icon(
+          Icons.devices_other_rounded,
+          color: isDark ? Colors.white70 : Colors.black54,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white24 : Colors.grey.shade300,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white24 : Colors.grey.shade300,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? Colors.white : Color(0xFF0D7377),
+            width: 2,
+          ),
+        ),
         filled: true,
         fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.white,
       ),
-      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'Please enter number of devices';
+      dropdownColor: isDark ? Colors.grey[900] : Colors.white,
+      items: List.generate(10, (index) => index + 1)
+          .map((number) => DropdownMenuItem(
+                value: number,
+                child: Text(
+                  '$number',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ))
+          .toList(),
+      onChanged: (value) {
+        if (value != null) {
+          _numDevicesController.text = value.toString();
         }
-        final number = int.tryParse(value);
-        if (number == null || number < 1 || number > 10) {
-          return 'Please enter a valid number (1-10)';
+      },
+      validator: (value) {
+        if (value == null) {
+          return 'Please select number of devices';
         }
         return null;
       },
-    );
-  }
-
-  Widget _buildInfoCard(String title, String value, bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: isDark ? Colors.grey[900] : Colors.grey[100],
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 8,
-            offset: Offset(0, 4),
-          ),
-        ],
+      icon: Icon(
+        Icons.arrow_drop_down,
+        color: isDark ? Colors.white70 : Colors.black54,
       ),
-      padding: EdgeInsets.all(16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            title,
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-                fontSize: 14, color: isDark ? Colors.white70 : Colors.black87),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title, bool isDark) {
-    return Text(
-      title,
-      style: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-          color: isDark ? Colors.white : Color(0xFF0D7377)),
     );
   }
 }

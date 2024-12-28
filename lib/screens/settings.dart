@@ -4,6 +4,7 @@ import 'dart:math' show pi, cos, sin, sqrt;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/theme_provider.dart';
+import 'dart:io';
 
 class SettingsPage extends StatefulWidget {
   @override
@@ -14,8 +15,9 @@ class _SettingsPageState extends State<SettingsPage>
     with SingleTickerProviderStateMixin {
   bool darkMode = false;
   bool notifications = true;
-  String selectedLanguage = 'English';
-  double fontSize = 16.0;
+  String username = 'Smart Home User';
+  int selectedAvatarIndex = 0;
+
   late AnimationController _controller;
   late Animation<double> _animation;
 
@@ -45,8 +47,8 @@ class _SettingsPageState extends State<SettingsPage>
     setState(() {
       darkMode = prefs.getBool('darkMode') ?? false;
       notifications = prefs.getBool('notifications') ?? true;
-      selectedLanguage = prefs.getString('language') ?? 'English';
-      fontSize = prefs.getDouble('fontSize') ?? 16.0;
+      username = prefs.getString('username') ?? 'Smart Home User';
+      selectedAvatarIndex = prefs.getInt('avatarIndex') ?? 0;
     });
   }
 
@@ -54,8 +56,8 @@ class _SettingsPageState extends State<SettingsPage>
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('darkMode', darkMode);
     await prefs.setBool('notifications', notifications);
-    await prefs.setString('language', selectedLanguage);
-    await prefs.setDouble('fontSize', fontSize);
+    await prefs.setString('username', username);
+    await prefs.setInt('avatarIndex', selectedAvatarIndex);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -64,6 +66,114 @@ class _SettingsPageState extends State<SettingsPage>
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
+
+  void _showUsernameDialog() {
+    final TextEditingController usernameController =
+        TextEditingController(text: username);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit Username'),
+        content: TextField(
+          controller: usernameController,
+          decoration: InputDecoration(
+            hintText: 'Enter your username',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                username = usernameController.text.trim().isNotEmpty
+                    ? usernameController.text.trim()
+                    : 'Smart Home User';
+              });
+              saveSettings();
+              Navigator.pop(context);
+            },
+            child: Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAvatarSelectionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Select Avatar'),
+        content: SingleChildScrollView(
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _buildAvatarOption(Icons.person_rounded),
+              _buildAvatarOption(Icons.person_outline_rounded),
+              _buildAvatarOption(Icons.face_rounded),
+              _buildAvatarOption(Icons.sentiment_satisfied_rounded),
+              _buildAvatarOption(Icons.tag_faces_rounded),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatarOption(IconData iconData) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          selectedAvatarIndex = [
+                Icons.person_rounded,
+                Icons.person_outline_rounded,
+                Icons.face_rounded,
+                Icons.sentiment_satisfied_rounded,
+                Icons.tag_faces_rounded
+              ].indexOf(iconData) +
+              1;
+        });
+        saveSettings();
+        Navigator.pop(context);
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: selectedAvatarIndex ==
+                    [
+                          Icons.person_rounded,
+                          Icons.person_outline_rounded,
+                          Icons.face_rounded,
+                          Icons.sentiment_satisfied_rounded,
+                          Icons.tag_faces_rounded
+                        ].indexOf(iconData) +
+                        1
+                ? Color(0xFF0D7377)
+                : Colors.transparent,
+            width: 3,
+          ),
+          borderRadius: BorderRadius.circular(50),
+        ),
+        child: CircleAvatar(
+          radius: 40,
+          backgroundColor: Color(0xFF0D7377).withOpacity(0.1),
+          child: Icon(
+            iconData,
+            size: 40,
+            color: Color(0xFF0D7377),
+          ),
         ),
       ),
     );
@@ -110,17 +220,14 @@ class _SettingsPageState extends State<SettingsPage>
                       isDark ? 'Dark theme enabled' : 'Light theme enabled',
                   icon: isDark ? Icons.dark_mode : Icons.light_mode,
                   value: isDark,
-                  onChanged: (value) async {
-                    await context.read<ThemeProvider>().toggleTheme();
+                  onChanged: (value) {
+                    context.read<ThemeProvider>().toggleTheme();
                     setState(() {
                       darkMode = value;
                     });
-                    // Auto-save
-                    saveSettings();
                   },
                   isDark: isDark,
                 ),
-                _buildFontSizeSlider(isDark),
               ],
             ),
             SizedBox(height: 16),
@@ -145,17 +252,6 @@ class _SettingsPageState extends State<SettingsPage>
                   },
                   isDark: isDark,
                 ),
-              ],
-            ),
-            SizedBox(height: 16),
-
-            // Language Section
-            _buildSection(
-              title: 'Language & Region',
-              icon: Icons.language,
-              isDark: isDark,
-              children: [
-                _buildLanguageSelector(isDark),
               ],
             ),
             SizedBox(height: 16),
@@ -203,39 +299,48 @@ class _SettingsPageState extends State<SettingsPage>
       ),
       child: Column(
         children: [
-          Container(
-            padding: EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [Color(0xFF0D7377), Color(0xFF14BDAC)],
+          GestureDetector(
+            onTap: _showAvatarSelectionDialog,
+            child: Container(
+              padding: EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [Color(0xFF0D7377), Color(0xFF14BDAC)],
+                ),
               ),
-            ),
-            child: CircleAvatar(
-              radius: 50,
-              backgroundColor: isDark ? Color(0xFF1E1E1E) : Colors.white,
-              child: Icon(
-                Icons.person,
-                size: 50,
-                color: Color(0xFF0D7377),
+              child: CircleAvatar(
+                radius: 50,
+                backgroundColor: isDark ? Color(0xFF1E1E1E) : Colors.white,
+                child: Icon(
+                  Icons.person_rounded,
+                  size: 60,
+                  color: Color(0xFF0D7377).withOpacity(0.7),
+                ),
               ),
             ),
           ),
           SizedBox(height: 16),
-          Text(
-            'Smart Home User',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : Color(0xFF0D7377),
-            ),
-          ),
-          Text(
-            'user@smarthome.com',
-            style: TextStyle(
-              fontSize: 16,
-              color: isDark ? Colors.white70 : Colors.grey[600],
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                username,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Color(0xFF0D7377),
+                ),
+              ),
+              SizedBox(width: 10),
+              IconButton(
+                icon: Icon(
+                  Icons.edit,
+                  color: Color(0xFF0D7377),
+                ),
+                onPressed: _showUsernameDialog,
+              ),
+            ],
           ),
         ],
       ),
@@ -336,146 +441,6 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
-  Widget _buildFontSizeSlider(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Font Size: ${fontSize.round()}',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black87,
-                ),
-              ),
-              Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.remove, color: Color(0xFF0D7377)),
-                    onPressed: () {
-                      if (fontSize > 12) {
-                        setState(() {
-                          fontSize -= 1;
-                          _applyFontSize();
-                        });
-                        saveSettings();
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.add, color: Color(0xFF0D7377)),
-                    onPressed: () {
-                      if (fontSize < 24) {
-                        setState(() {
-                          fontSize += 1;
-                          _applyFontSize();
-                        });
-                        saveSettings();
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        Slider(
-          value: fontSize,
-          min: 12,
-          max: 24,
-          divisions: 12,
-          label: fontSize.round().toString(),
-          onChanged: (value) {
-            setState(() {
-              fontSize = value;
-              _applyFontSize();
-            });
-            saveSettings();
-          },
-          activeColor: Color(0xFF0D7377),
-          inactiveColor: Color(0xFF0D7377).withOpacity(0.3),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Preview Text',
-            style: TextStyle(fontSize: fontSize),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLanguageSelector(bool isDark) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Select Language',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
-          ),
-          SizedBox(height: 8),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Color(0xFF0D7377)),
-              color: isDark ? Color(0xFF1E1E1E) : Colors.white,
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                isExpanded: true,
-                value: selectedLanguage,
-                dropdownColor: isDark ? Color(0xFF1E1E1E) : Colors.white,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-                items: [
-                  'English',
-                  'Spanish',
-                  'French',
-                  'German',
-                  'Chinese',
-                  'Japanese'
-                ].map((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(
-                      value,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                  );
-                }).toList(),
-                onChanged: (newValue) {
-                  setState(() {
-                    selectedLanguage = newValue!;
-                    _applyLanguage();
-                  });
-                  saveSettings();
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildInfoTile({
     required String title,
     required String subtitle,
@@ -486,36 +451,6 @@ class _SettingsPageState extends State<SettingsPage>
       leading: Icon(icon, color: Color(0xFF0D7377)),
       title: Text(title),
       subtitle: Text(subtitle),
-    );
-  }
-
-  void _applyTheme(bool isDark) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(isDark ? 'Dark theme applied' : 'Light theme applied'),
-        backgroundColor: Color(0xFF0D7377),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  void _applyFontSize() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Font size updated to ${fontSize.round()}'),
-        backgroundColor: Color(0xFF0D7377),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  void _applyLanguage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Language changed to $selectedLanguage'),
-        backgroundColor: Color(0xFF0D7377),
-        behavior: SnackBarBehavior.floating,
-      ),
     );
   }
 }

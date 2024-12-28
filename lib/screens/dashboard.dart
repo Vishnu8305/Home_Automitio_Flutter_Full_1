@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'device_control_page.dart';
 import '../widgets/device_container.dart';
+import '../providers/device_state_provider.dart';
 
 class DashboardPage extends StatefulWidget {
   final Map<String, dynamic>? newDevice;
