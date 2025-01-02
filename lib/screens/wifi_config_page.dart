@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:async';
 import '../providers/theme_provider.dart';
 import '../screens/dashboard.dart';
+import '../screens/bluetooth_scan.dart';
 
 // Color Palette Class
 class AppColorPalette {
@@ -53,6 +54,7 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
   final _passwordController = TextEditingController();
   final _deviceNameController = TextEditingController();
   final _mqttBrokerController = TextEditingController();
+  final _mqttPasswordController = TextEditingController();
   final _numDevicesController = TextEditingController(text: '1');
 
   bool _isLoading = false;
@@ -61,6 +63,9 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
   StreamSubscription? _statusSubscription;
   late AnimationController _animationController;
   late Animation<double> _animation;
+  bool _isDeviceConfigured = false;
+  bool _isWiFiPasswordVisible = false;
+  bool _isMQTTPasswordVisible = false;
 
   @override
   void initState() {
@@ -84,12 +89,26 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
   void dispose() {
     _statusSubscription?.cancel();
     _animationController.dispose();
+    _ssidController.dispose();
+    _passwordController.dispose();
+    _deviceNameController.dispose();
+    _mqttBrokerController.dispose();
+    _mqttPasswordController.dispose();
+    _numDevicesController.dispose();
     super.dispose();
   }
 
   Future<void> _configureDevice() async {
+    // Prevent multiple configuration attempts
+    if (_isLoading) return;
+
+    // Reset device configured flag
+    _isDeviceConfigured = false;
+
+    // Validate form
     if (!_formKey.currentState!.validate()) return;
 
+    // Always set loading state to true
     setState(() {
       _isLoading = true;
       _connectionStatus = "Configuring...";
@@ -102,6 +121,7 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
         'password': _passwordController.text,
         'deviceName': _deviceNameController.text,
         'mqttBroker': _mqttBrokerController.text,
+        'mqttPassword': _mqttPasswordController.text,
         'numDevices': int.parse(_numDevicesController.text)
       };
 
@@ -114,6 +134,7 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
       _showError('Configuration failed: $e');
       setState(() {
         _isLoading = false;
+        _connectionStatus = "Configuration Error";
       });
     }
   }
@@ -154,66 +175,113 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
         throw Exception("Status characteristic not found");
       }
 
-      // Write JSON configuration
+      // Cancel any existing subscription before setting up a new one
+      _statusSubscription?.cancel();
+
+      // Setup a timeout for configuration
+      final completer = Completer<void>();
+      Timer? timeoutTimer;
+
+      // Listen for status response before writing configuration
+      _statusSubscription = statusCharacteristic.value.listen((value) {
+        if (value.isNotEmpty) {
+          try {
+            String response = utf8.decode(value);
+            print('Received BLE response: $response');
+
+            Map<String, dynamic> statusJson = jsonDecode(response);
+
+            if (statusJson['type'] == 'status') {
+              String message = statusJson['message'];
+              print('Status message: $message');
+
+              setState(() {
+                _connectionStatus = message;
+
+                // Reset loading state for any failed configuration
+                if (message.toLowerCase().contains('failed')) {
+                  _isLoading = false;
+                  _isDeviceConfigured = false;
+                }
+              });
+
+              // Complete the configuration process
+              if (!_isDeviceConfigured) {
+                if (message.toLowerCase() == 'connected') {
+                  _onDeviceConfigured();
+                }
+              }
+
+              // Cancel the timeout timer
+              timeoutTimer?.cancel();
+              if (!completer.isCompleted) {
+                completer.complete();
+              }
+            }
+          } catch (e) {
+            print('Error processing BLE response: $e');
+            setState(() {
+              _isLoading = false;
+              _connectionStatus = "Error: $e";
+            });
+
+            // Complete with error
+            if (!completer.isCompleted) {
+              completer.completeError(e);
+            }
+          }
+        }
+      }, onError: (error) {
+        print('BLE Characteristic Error: $error');
+        setState(() {
+          _connectionStatus = "Error: $error";
+          _isLoading = false;
+        });
+
+        // Complete with error
+        if (!completer.isCompleted) {
+          completer.completeError(error);
+        }
+      });
+
+      // Set up a timeout
+      timeoutTimer = Timer(Duration(seconds: 30), () {
+        if (!completer.isCompleted) {
+          completer.completeError(TimeoutException('Configuration timed out'));
+          setState(() {
+            _isLoading = false;
+            _connectionStatus = "Configuration Timeout";
+          });
+        }
+      });
+
+      // Enable notifications
+      await statusCharacteristic.setNotifyValue(true);
+
+      // Write configuration
       await configCharacteristic.write(utf8.encode(jsonConfig));
 
-      // Listen for status response
-      _listenForConfigurationStatus(statusCharacteristic);
+      // Wait for the configuration process to complete
+      await completer.future;
     } catch (e) {
-      print('Configuration send error: $e'); // Debug print
+      print('Configuration send error: $e');
       _showError('Failed to send configuration: $e');
       setState(() {
         _isLoading = false;
+        _connectionStatus = "Configuration Error";
       });
     }
-  }
-
-  void _listenForConfigurationStatus(BluetoothCharacteristic characteristic) {
-    // Cancel any existing subscription
-    _statusSubscription?.cancel();
-
-    // Listen for notifications or read responses
-    _statusSubscription = characteristic.value.listen((value) {
-      if (value.isNotEmpty) {
-        try {
-          String response = utf8.decode(value);
-          print('Received BLE response: $response'); // Debug print
-
-          // Parse the JSON response
-          Map<String, dynamic> statusJson = jsonDecode(response);
-
-          // Check for specific status messages
-          if (statusJson['type'] == 'status') {
-            String message = statusJson['message'];
-            print('Status message: $message'); // Debug print
-
-            // Check for connected or success message
-            if (message.toLowerCase().contains('connected') ||
-                message.toLowerCase().contains('success')) {
-              // Successfully configured
-              _onDeviceConfigured();
-            }
-          }
-        } catch (e) {
-          print('Error processing BLE response: $e');
-        }
-      }
-    }, onError: (error) {
-      print('BLE Characteristic Error: $error'); // Debug print
-      _showError('Error receiving status: $error');
-      setState(() {
-        _isLoading = false;
-      });
-    });
-
-    // Enable notifications and read current value
-    characteristic.setNotifyValue(true);
-    characteristic.read(); // Attempt to read current value
   }
 
   void _onDeviceConfigured() {
     // Ensure this is called on the main thread
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Prevent multiple calls
+      if (_isDeviceConfigured) return;
+
+      // Set flag to prevent multiple triggers
+      _isDeviceConfigured = true;
+
       // Cancel the subscription
       _statusSubscription?.cancel();
 
@@ -235,6 +303,63 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
           ),
         ),
         (Route<dynamic> route) => false, // Remove all previous routes
+      );
+    });
+  }
+
+  void _onWiFiFailed() {
+    // Ensure this is called on the main thread
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Prevent multiple calls
+      if (_isDeviceConfigured) return;
+
+      // Cancel the subscription
+      _statusSubscription?.cancel();
+
+      setState(() {
+        _connectionStatus = "Wi-Fi Failed";
+        _isLoading = false;
+      });
+
+      // Show dialog about Wi-Fi connection failure
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text('Wi-Fi Connection Failed'),
+            content: Text(
+              'The device could not connect to the specified Wi-Fi network. '
+              'Please check your credentials and try again.',
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: Text('Retry Configuration'),
+                onPressed: () {
+                  // Close the dialog
+                  Navigator.of(context).pop();
+                },
+              ),
+              TextButton(
+                child: Text('Rescan Devices'),
+                onPressed: () {
+                  // Close the dialog
+                  Navigator.of(context).pop();
+
+                  // Navigate to Bluetooth scan page for reconnection
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BluetoothDevicesPage(
+                        isReconnecting: true,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          );
+        },
       );
     });
   }
@@ -291,11 +416,12 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
 
   String? _validateMQTTBroker(String? value) {
     if (value == null || value.isEmpty) {
-      return 'MQTT Broker IP is required';
+      return 'MQTT Broker is required';
     }
-    final ipRegex = RegExp(r'^(\d{1,3}\.){3}\d{1,3}$');
-    if (!ipRegex.hasMatch(value)) {
-      return 'Please enter a valid IP address (e.g., 192.168.1.100)';
+    // Allow alphanumeric characters, dots, and hyphens for domain names
+    final brokerRegex = RegExp(r'^[a-zA-Z0-9.-]+$');
+    if (!brokerRegex.hasMatch(value)) {
+      return 'Please enter a valid broker address (e.g., broker.example.com)';
     }
     return null;
   }
@@ -392,6 +518,29 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
   }
 
   Widget _buildStatusCards(bool isDark) {
+    Color statusColor;
+    IconData statusIcon;
+
+    // Determine status color and icon based on connection status
+    switch (_connectionStatus.toLowerCase()) {
+      case 'connected':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle_outline;
+        break;
+      case 'wifi failed':
+      case 'mqtt failed':
+        statusColor = Colors.red;
+        statusIcon = Icons.error_outline;
+        break;
+      case 'configuring':
+        statusColor = Colors.orange;
+        statusIcon = Icons.sync;
+        break;
+      default:
+        statusColor = Colors.grey;
+        statusIcon = Icons.device_unknown;
+    }
+
     return Container(
       margin: EdgeInsets.all(8),
       padding: EdgeInsets.all(16),
@@ -416,12 +565,12 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
               Icons.device_hub_rounded, isDark),
           SizedBox(height: 10),
           _buildInfoCard(
-              'Connection Status',
-              _connectionStatus,
-              _connectionStatus == 'Disconnected'
-                  ? Icons.error_outline
-                  : Icons.check_circle_outline,
-              isDark),
+            'Connection Status',
+            _connectionStatus,
+            statusIcon,
+            isDark,
+            statusColor: statusColor,
+          ),
         ],
       ),
     );
@@ -438,8 +587,8 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
     );
   }
 
-  Widget _buildInfoCard(
-      String title, String value, IconData icon, bool isDark) {
+  Widget _buildInfoCard(String title, String value, IconData icon, bool isDark,
+      {Color? statusColor}) {
     return Container(
       margin: EdgeInsets.symmetric(vertical: 8),
       padding: EdgeInsets.all(16),
@@ -457,7 +606,7 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
             ),
             child: Icon(
               icon,
-              color: Colors.white,
+              color: statusColor ?? Colors.white,
               size: 30,
             ),
           ),
@@ -478,7 +627,7 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: statusColor ?? Colors.white,
                   ),
                 ),
               ],
@@ -490,12 +639,16 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
   }
 
   Widget _buildConfigureButton(bool isDark) {
+    bool isFailedStatus = _connectionStatus.toLowerCase().contains('failed');
+
     return Container(
       margin: EdgeInsets.all(20),
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF0D7377), Color(0xFF14BDAC)],
+          colors: isFailedStatus
+              ? [Colors.red.shade700, Colors.red.shade500]
+              : [Color(0xFF0D7377), Color(0xFF14BDAC)],
         ),
         borderRadius: BorderRadius.circular(25),
         boxShadow: [
@@ -507,6 +660,7 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
         ],
       ),
       child: ElevatedButton(
+        // Disable button completely when loading
         onPressed: _isLoading ? null : _configureDevice,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
@@ -521,7 +675,7 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               )
             : Text(
-                'Configure Device',
+                isFailedStatus ? 'Retry Configuration' : 'Configure Device',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -619,12 +773,25 @@ class _WiFiConfigPageState extends State<WiFiConfigPage>
   }
 
   Widget _buildMQTTSettingsFields(bool isDark) {
-    return _buildTextField(
-      controller: _mqttBrokerController,
-      label: 'MQTT Broker IP *',
-      icon: Icons.cloud_rounded,
-      isDark: isDark,
-      validator: _validateMQTTBroker,
+    return Column(
+      children: [
+        _buildTextField(
+          controller: _mqttBrokerController,
+          label: 'MQTT Broker IP *',
+          icon: Icons.cloud_rounded,
+          isDark: isDark,
+          validator: _validateMQTTBroker,
+        ),
+        SizedBox(height: 15),
+        _buildTextField(
+          controller: _mqttPasswordController,
+          label: 'MQTT Broker Password (Optional)',
+          icon: Icons.lock_rounded,
+          isPassword: true,
+          isDark: isDark,
+          validator: _validateMQTTBroker,
+        ),
+      ],
     );
   }
 

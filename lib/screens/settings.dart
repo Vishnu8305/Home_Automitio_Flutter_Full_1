@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/theme_provider.dart';
 import 'dart:io';
+import 'wifi_settings.dart';
 
 class SettingsPage extends StatefulWidget {
   @override
@@ -277,6 +278,156 @@ class _SettingsPageState extends State<SettingsPage>
                 ),
               ],
             ),
+
+            // WiFi Settings Section
+            _buildSection(
+              title: 'WiFi Settings',
+              icon: Icons.wifi_rounded,
+              isDark: isDark,
+              children: [
+                ListTile(
+                  leading: Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Color(0xFF0D7377).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child:
+                        Icon(Icons.settings_ethernet, color: Color(0xFF0D7377)),
+                  ),
+                  title: Text(
+                    'Configure WiFi Defaults',
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Set default WiFi and MQTT configurations',
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ),
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFF0D7377),
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => WiFiSettingsPage(),
+                      ),
+                    );
+                  },
+                ),
+                // New WiFi Password Fields
+                ExpansionTile(
+                  leading: Icon(Icons.lock, color: Color(0xFF0D7377)),
+                  title: Text(
+                    'WiFi Credentials',
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Manage default WiFi network credentials',
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: TextField(
+                        decoration: InputDecoration(
+                          labelText: 'WiFi Network Name (SSID)',
+                          prefixIcon:
+                              Icon(Icons.wifi, color: Color(0xFF0D7377)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: TextField(
+                        obscureText: true,
+                        decoration: InputDecoration(
+                          labelText: 'WiFi Password',
+                          prefixIcon:
+                              Icon(Icons.lock, color: Color(0xFF0D7377)),
+                          suffixIcon: IconButton(
+                            icon: Icon(Icons.visibility),
+                            onPressed: () {
+                              // TODO: Implement password visibility toggle
+                            },
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: TextField(
+                        decoration: InputDecoration(
+                          labelText: 'MQTT Broker Address',
+                          prefixIcon:
+                              Icon(Icons.cloud, color: Color(0xFF0D7377)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: TextField(
+                        obscureText: true,
+                        decoration: InputDecoration(
+                          labelText: 'MQTT Broker Password (Optional)',
+                          prefixIcon:
+                              Icon(Icons.lock, color: Color(0xFF0D7377)),
+                          suffixIcon: IconButton(
+                            icon: Icon(Icons.visibility),
+                            onPressed: () {
+                              // TODO: Implement password visibility toggle
+                            },
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: ElevatedButton(
+                        onPressed: () {
+                          // TODO: Implement save credentials logic
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color(0xFF0D7377),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Text('Save Credentials'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
           ],
         ),
       ),

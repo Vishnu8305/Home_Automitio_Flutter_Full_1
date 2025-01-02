@@ -38,7 +38,7 @@ class _DeviceControlPageState extends State<DeviceControlPage> {
     // Use colons in MAC address for MQTT topic
     _mqttClient = MqttServerClient(
         widget.mqttBroker, 'flutter_client_${widget.macAddress}');
-    _mqttClient?.port = 1883;
+    _mqttClient?.port = 8883;
     _mqttClient?.keepAlivePeriod = 20;
     _mqttClient?.onConnected = _onMqttConnected;
     _mqttClient?.onDisconnected = _onMqttDisconnected;
@@ -122,7 +122,7 @@ class _DeviceControlPageState extends State<DeviceControlPage> {
             // MQTT Broker Information Card
             _buildInfoCard(
               'MQTT Broker',
-              '${widget.mqttBroker}:1883',
+              '${widget.mqttBroker}:8883',
               Icons.cloud_rounded,
               isDark,
             ),
